@@ -18,27 +18,9 @@ import json
 import time
 import base64
 import re
-import threading
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
-
-# APScheduler for reliable background scheduling
-try:
-    from apscheduler.schedulers.background import BackgroundScheduler
-    from apscheduler.triggers.interval import IntervalTrigger
-    HAS_SCHEDULER = True
-except ImportError:
-    HAS_SCHEDULER = False
-# ─── SAFE SECRETS HELPER ─────────────────────────────────────────────────────
-def _secret(key: str, default: str = "") -> str:
-    """Read from st.secrets safely — returns default when no secrets.toml exists."""
-    try:
-        return _secret(key, default)
-    except Exception:
-        return default
-
-
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -197,141 +179,18 @@ def save_queue_to_disk(queue: list):
     except Exception as e:
         st.warning(f"Could not save queue: {e}")
 
-def _do_scheduled_publish():
-    """
-    Background job: reads queue from disk, publishes due posts,
-    writes result back. Runs in APScheduler thread — no Streamlit context.
-    """
-    try:
-        queue = load_queue_from_disk()
-        now = datetime.now()
-        changed = False
-        for item in queue:
-            if item.get("status") == "scheduled" and item.get("scheduled_time"):
-                try:
-                    sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
-                    if now >= sched:
-                        for platform, text in item["posts"].items():
-                            result = _publish_from_disk(platform, text,
-                                                        image_url=item.get("image_url"),
-                                                        link_url=item.get("link_url"))
-                            if "error" not in result:
-                                item["status"] = "posted"
-                                changed = True
-                except Exception:
-                    pass
-        if changed:
-            save_queue_to_disk(queue)
-    except Exception:
-        pass
+import threading
 
+def schedule_loop():
+    while True:
+        time.sleep(60)  # check every 60 seconds
+        auto_publish_scheduled()
 
-def _publish_from_disk(platform, message, image_url=None, link_url=None):
-    """Credential-safe publish used by the background scheduler (reads from secrets)."""
-    import streamlit as st
-    # Use safe helper — works even without secrets.toml
-    secrets = type("S", (), {"get": staticmethod(lambda k, d="": _secret(k, d))})()
-
-    if platform == "Facebook":
-        page_id = secrets.get("FB_PAGE_ID", "")
-        token   = secrets.get("FB_TOKEN", "")
-        if not page_id or not token:
-            return {"error": "Facebook credentials not in secrets"}
-        if image_url:
-            r = requests.post(
-                f"https://graph.facebook.com/{page_id}/photos",
-                data={"url": image_url, "caption": message, "access_token": token, "published": True},
-                timeout=30,
-            )
-        else:
-            payload = {"message": message, "access_token": token}
-            if link_url:
-                payload["link"] = link_url
-            r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload, timeout=30)
-        return r.json()
-
-    elif platform == "X (Twitter)":
-        try:
-            import tweepy
-        except ImportError:
-            return {"error": "tweepy not installed"}
-        try:
-            client = tweepy.Client(
-                consumer_key=secrets.get("TW_API_KEY", ""),
-                consumer_secret=secrets.get("TW_API_SECRET", ""),
-                access_token=secrets.get("TW_ACCESS_TOKEN", ""),
-                access_token_secret=secrets.get("TW_ACCESS_SECRET", ""),
-            )
-            resp = client.create_tweet(text=message[:280])
-            return {"id": resp.data["id"]}
-        except Exception as e:
-            return {"error": str(e)}
-
-    elif platform == "LinkedIn":
-        token = secrets.get("LI_ACCESS_TOKEN", "")
-        if not token:
-            return {"error": "LinkedIn token not in secrets"}
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "X-Restli-Protocol-Version": "2.0.0",
-        }
-        me = requests.get("https://api.linkedin.com/v2/me", headers=headers, timeout=30)
-        if me.status_code != 200:
-            return {"error": f"LinkedIn profile fetch failed"}
-        urn = f"urn:li:person:{me.json()['id']}"
-        body = {
-            "author": urn, "lifecycleState": "PUBLISHED",
-            "specificContent": {"com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": message},
-                "shareMediaCategory": "NONE",
-            }},
-            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
-        }
-        r = requests.post("https://api.linkedin.com/v2/ugcPosts", headers=headers, json=body, timeout=30)
-        return r.json()
-
-    return {"error": f"Platform {platform} not supported in scheduler"}
-
-
-def auto_publish_scheduled():
-    """Called on page load — catches any posts missed while app was idle."""
-    now = datetime.now()
-    changed = False
-    queue = load_queue_from_disk()
-    for item in queue:
-        if item.get("status") == "scheduled" and item.get("scheduled_time"):
-            try:
-                sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
-                if now >= sched:
-                    for platform, text in item["posts"].items():
-                        result = _publish_from_disk(platform, text,
-                                                    image_url=item.get("image_url"),
-                                                    link_url=item.get("link_url"))
-                        if "error" not in result:
-                            item["status"] = "posted"
-                            changed = True
-            except Exception:
-                pass
-    if changed:
-        save_queue_to_disk(queue)
-        import streamlit as st
-        st.session_state.queue = queue
-
-
-# ─── START APSCHEDULER (once per process) ────────────────────────────────────
-def _start_scheduler():
-    if not HAS_SCHEDULER:
-        return
-    # Use a process-level flag so we only start one scheduler thread
-    if getattr(_start_scheduler, "_started", False):
-        return
-    _start_scheduler._started = True
-    scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(_do_scheduled_publish, IntervalTrigger(minutes=1), id="auto_post", replace_existing=True)
-    scheduler.start()
-
-_start_scheduler()
+# Start background thread once
+if "scheduler_started" not in st.session_state:
+    t = threading.Thread(target=schedule_loop, daemon=True)
+    t.start()
+    st.session_state["scheduler_started"] = True
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
@@ -340,7 +199,7 @@ def init_state():
         "generated_posts": {},
         "generated_image": None,
         "generated_image_url": None,
-        "gemini_key": _secret("GEMINI_API_KEY", ""),
+        "gemini_key": "AIzaSyCBvmGOXo3eJdZ5V6S3VfS2UZqUHVzRxxg",
         "fb_page_name": "", "fb_page_id": "", "fb_token": "",
         "tw_handle": "", "tw_api_key": "", "tw_api_secret": "",
         "tw_access_token": "", "tw_access_secret": "",
@@ -353,14 +212,29 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
-auto_publish_scheduled()
+
+# Background scheduler
+if "scheduler_started" not in st.session_state:
+    def schedule_loop():
+        while True:
+            time.sleep(60)
+            auto_publish_scheduled()
+    t = threading.Thread(target=schedule_loop, daemon=True)
+    t.start()
+    st.session_state["scheduler_started"] = True
+
+# ← ADD THIS BLOCK
+if st.session_state.get("auto_publish_errors"):
+    for err in st.session_state["auto_publish_errors"]:
+        st.error(f"🔴 Auto-publish failed: {err}")
+    st.session_state["auto_publish_errors"] = []
 
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
 def call_gemini(prompt: str) -> str:
-    key = st.session_state.get("gemini_key") or _secret("GEMINI_API_KEY", "")
+    key = st.session_state.gemini_key
     if not key:
-        st.error("⚠️ Gemini API key missing. Paste your key in the sidebar (🔑 Gemini API Key). Get a free key at aistudio.google.com")
+        st.error("⚠️ Gemini API key error. Please contact the administrator.")
         st.stop()
 
     # Try models in order — newer ones need billing; older ones are free for all keys
@@ -536,21 +410,34 @@ def generate_image(service: str, brief: str):
 
 # ─── SOCIAL PUBLISHING ────────────────────────────────────────────────────────
 def post_to_facebook(message, image_url=None, link_url=None):
-    page_id = st.session_state.fb_page_id or _secret("FB_PAGE_ID", "")
-    token   = st.session_state.fb_token   or _secret("FB_TOKEN", "")
+    page_id = st.session_state.fb_page_id
+    token   = st.session_state.fb_token
     if not page_id or not token:
         return {"error": "Facebook credentials not configured."}
+    
+    API_VERSION = "v19.0"   # ← ADD THIS — missing version causes silent 400 errors
+    
     if image_url:
         r = requests.post(
-            f"https://graph.facebook.com/{page_id}/photos",
-            data={"url": image_url, "caption": message, "access_token": token, "published": True},
+            f"https://graph.facebook.com/{API_VERSION}/{page_id}/photos",
+            data={"url": image_url, "caption": message, 
+                  "access_token": token, "published": True},
         )
     else:
         payload = {"message": message, "access_token": token}
         if link_url:
             payload["link"] = link_url
-        r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload)
-    return r.json()
+        r = requests.post(
+            f"https://graph.facebook.com/{API_VERSION}/{page_id}/feed", 
+            data=payload
+        )
+    
+    result = r.json()
+    # ← ADD THIS: surface the full FB error message
+    if "error" in result:
+        err = result["error"]
+        return {"error": f"[{err.get('code')}] {err.get('message')} — Type: {err.get('type')}"}
+    return result
 
 
 def post_to_twitter(message):
@@ -559,8 +446,7 @@ def post_to_twitter(message):
     except ImportError:
         return {"error": "tweepy not installed. Run: pip install tweepy"}
     keys = ["tw_api_key", "tw_api_secret", "tw_access_token", "tw_access_secret"]
-    secret_keys = ["TW_API_KEY", "TW_API_SECRET", "TW_ACCESS_TOKEN", "TW_ACCESS_SECRET"]
-    vals = [st.session_state.get(k) or _secret(sk, "") for k, sk in zip(keys, secret_keys)]
+    vals = [st.session_state[k] for k in keys]
     if not all(vals):
         return {"error": "Twitter/X credentials not fully configured."}
     try:
@@ -575,7 +461,7 @@ def post_to_twitter(message):
 
 
 def post_to_linkedin(message):
-    token = st.session_state.li_access_token or _secret("LI_ACCESS_TOKEN", "")
+    token = st.session_state.li_access_token
     if not token:
         return {"error": "LinkedIn access token not configured."}
     headers = {
@@ -603,9 +489,7 @@ def post_to_linkedin(message):
 
 
 def post_to_instagram(message):
-    ig_uid = st.session_state.ig_user_id or _secret("IG_USER_ID", "")
-    ig_tok = st.session_state.ig_token   or _secret("IG_TOKEN", "")
-    if not ig_uid or not ig_tok:
+    if not st.session_state.ig_user_id or not st.session_state.ig_token:
         return {"error": "Instagram credentials not configured."}
     return {"error": "Instagram feed posts require an image via the Meta Graph API."}
 
@@ -709,22 +593,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Gemini API Key ──
-    st.markdown("**🔑 Gemini API Key**")
-    gemini_input = st.text_input(
-        "Gemini API Key",
-        value=st.session_state.gemini_key,
-        type="password",
-        placeholder="Paste your key here…",
-        help="Free key from aistudio.google.com",
-        label_visibility="collapsed",
-        key="gemini_key_input",
-    )
-    if gemini_input:
-        st.session_state.gemini_key = gemini_input
-    st.caption("[Get free key → aistudio.google.com](https://aistudio.google.com/app/apikey)")
-    st.markdown("---")
-
     # ── Platform credentials ──
     with st.expander("📘 Facebook"):
         st.session_state.fb_page_name = st.text_input("Page Name (preview)", value=st.session_state.fb_page_name, placeholder="My Business Page", key="fb_nm")
@@ -747,43 +615,6 @@ with st.sidebar:
         st.session_state.ig_handle  = st.text_input("@Handle (preview)", value=st.session_state.ig_handle,  placeholder="@yourbusiness", key="ig_h")
         st.session_state.ig_user_id = st.text_input("Business User ID",  value=st.session_state.ig_user_id, key="ig_uid")
         st.session_state.ig_token   = st.text_input("Access Token",      value=st.session_state.ig_token,   type="password", key="ig_tk")
-
-    st.markdown("---")
-
-    # Scheduler status
-    if HAS_SCHEDULER:
-        st.markdown("""
-        <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:12px;color:#1b5e20">
-            ✅ <b>APScheduler active</b><br>
-            Checks every 60 s · posts fire automatically even while you sleep.
-        </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;font-size:12px;color:#e65100">
-            ⚠️ <b>APScheduler not installed</b><br>
-            Run: <code>pip install apscheduler</code>
-        </div>""", unsafe_allow_html=True)
-
-    # Scheduled post countdown
-    scheduled = [i for i in st.session_state.queue if i.get("status") == "scheduled" and i.get("scheduled_time")]
-    if scheduled:
-        st.markdown("**⏰ Upcoming Scheduled Posts**")
-        for s in scheduled[:5]:
-            try:
-                sched_dt = datetime.strptime(s["scheduled_time"], "%Y-%m-%d %H:%M")
-                delta = sched_dt - datetime.now()
-                mins  = int(delta.total_seconds() // 60)
-                if mins < 0:
-                    countdown = "🔴 Overdue — publishing next check"
-                elif mins < 60:
-                    countdown = f"⏱️ {mins}m"
-                elif mins < 1440:
-                    countdown = f"⏱️ {mins//60}h {mins%60}m"
-                else:
-                    countdown = f"📅 {mins//1440}d {(mins%1440)//60}h"
-                st.caption(f"{s['service']} · {countdown}")
-            except Exception:
-                pass
 
     st.markdown("---")
     st.caption("Built with Gemini · Pollinations.AI · FLUX · Social Graph APIs")
@@ -862,7 +693,7 @@ with tab_compose:
         st.markdown("### 2️⃣ Generate & Preview")
 
         if not st.session_state.gemini_key:
-            st.markdown('<div class="warn-box">⚠️ Paste your <b>Gemini API key</b> in the sidebar (top field 🔑) to generate posts. <a href="https://aistudio.google.com/app/apikey" target="_blank">Get free key →</a></div>', unsafe_allow_html=True)
+            st.markdown('<div class="warn-box">⚠️ Add your Gemini API key in the sidebar to generate posts. Free at aistudio.google.com</div>', unsafe_allow_html=True)
 
         gen_btn = st.button("✨ Generate Posts", type="primary", use_container_width=True, disabled=not selected_platforms)
 

@@ -182,29 +182,20 @@ def save_queue_to_disk(queue: list):
 def auto_publish_scheduled():
     now = datetime.now()
     changed = False
-    publish_errors = []
     for item in st.session_state.queue:
         if item.get("status") == "scheduled" and item.get("scheduled_time"):
             try:
                 sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
                 if now >= sched:
                     for platform, text in item["posts"].items():
-                        result = publish_post(
-                            platform, text,
-                            image_url=item.get("image_url"),
-                            link_url=item.get("link_url")
-                        )
-                        if "error" in result:
-                            publish_errors.append(f"{platform}: {result['error']}")
-                        else:
+                        result = publish_post(platform, text, image_url=item.get("image_url"), link_url=item.get("link_url"))
+                        if "error" not in result:
                             item["status"] = "posted"
                             changed = True
-            except Exception as e:
-                publish_errors.append(str(e))
+            except Exception:
+                pass
     if changed:
         save_queue_to_disk(st.session_state.queue)
-    # Store errors so the UI can show them
-    st.session_state["auto_publish_errors"] = publish_errors
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
@@ -227,12 +218,6 @@ def init_state():
 
 init_state()
 auto_publish_scheduled()
-
-# ← ADD THIS BLOCK
-if st.session_state.get("auto_publish_errors"):
-    for err in st.session_state["auto_publish_errors"]:
-        st.error(f"🔴 Auto-publish failed: {err}")
-    st.session_state["auto_publish_errors"] = []
 
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────

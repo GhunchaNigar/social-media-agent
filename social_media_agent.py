@@ -182,29 +182,20 @@ def save_queue_to_disk(queue: list):
 def auto_publish_scheduled():
     now = datetime.now()
     changed = False
-    publish_errors = []
     for item in st.session_state.queue:
         if item.get("status") == "scheduled" and item.get("scheduled_time"):
             try:
                 sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
                 if now >= sched:
                     for platform, text in item["posts"].items():
-                        result = publish_post(
-                            platform, text,
-                            image_url=item.get("image_url"),
-                            link_url=item.get("link_url")
-                        )
-                        if "error" in result:
-                            publish_errors.append(f"{platform}: {result['error']}")
-                        else:
+                        result = publish_post(platform, text, image_url=item.get("image_url"), link_url=item.get("link_url"))
+                        if "error" not in result:
                             item["status"] = "posted"
                             changed = True
-            except Exception as e:
-                publish_errors.append(str(e))
+            except Exception:
+                pass
     if changed:
         save_queue_to_disk(st.session_state.queue)
-    # Store errors so the UI can show them
-    st.session_state["auto_publish_errors"] = publish_errors
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
@@ -227,12 +218,6 @@ def init_state():
 
 init_state()
 auto_publish_scheduled()
-
-# ← ADD THIS BLOCK
-if st.session_state.get("auto_publish_errors"):
-    for err in st.session_state["auto_publish_errors"]:
-        st.error(f"🔴 Auto-publish failed: {err}")
-    st.session_state["auto_publish_errors"] = []
 
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
@@ -419,30 +404,17 @@ def post_to_facebook(message, image_url=None, link_url=None):
     token   = st.session_state.fb_token
     if not page_id or not token:
         return {"error": "Facebook credentials not configured."}
-    
-    API_VERSION = "v19.0"   # ← ADD THIS — missing version causes silent 400 errors
-    
     if image_url:
         r = requests.post(
-            f"https://graph.facebook.com/{API_VERSION}/{page_id}/photos",
-            data={"url": image_url, "caption": message, 
-                  "access_token": token, "published": True},
+            f"https://graph.facebook.com/{page_id}/photos",
+            data={"url": image_url, "caption": message, "access_token": token, "published": True},
         )
     else:
         payload = {"message": message, "access_token": token}
         if link_url:
             payload["link"] = link_url
-        r = requests.post(
-            f"https://graph.facebook.com/{API_VERSION}/{page_id}/feed", 
-            data=payload
-        )
-    
-    result = r.json()
-    # ← ADD THIS: surface the full FB error message
-    if "error" in result:
-        err = result["error"]
-        return {"error": f"[{err.get('code')}] {err.get('message')} — Type: {err.get('type')}"}
-    return result
+        r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload)
+    return r.json()
 
 
 def post_to_twitter(message):

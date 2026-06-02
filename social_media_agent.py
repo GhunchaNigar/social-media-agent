@@ -404,30 +404,17 @@ def post_to_facebook(message, image_url=None, link_url=None):
     token   = st.session_state.fb_token
     if not page_id or not token:
         return {"error": "Facebook credentials not configured."}
-    
-    API_VERSION = "v19.0"   # ← ADD THIS — missing version causes silent 400 errors
-    
     if image_url:
         r = requests.post(
-            f"https://graph.facebook.com/{API_VERSION}/{page_id}/photos",
-            data={"url": image_url, "caption": message, 
-                  "access_token": token, "published": True},
+            f"https://graph.facebook.com/{page_id}/photos",
+            data={"url": image_url, "caption": message, "access_token": token, "published": True},
         )
     else:
         payload = {"message": message, "access_token": token}
         if link_url:
             payload["link"] = link_url
-        r = requests.post(
-            f"https://graph.facebook.com/{API_VERSION}/{page_id}/feed", 
-            data=payload
-        )
-    
-    result = r.json()
-    # ← ADD THIS: surface the full FB error message
-    if "error" in result:
-        err = result["error"]
-        return {"error": f"[{err.get('code')}] {err.get('message')} — Type: {err.get('type')}"}
-    return result
+        r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload)
+    return r.json()
 
 
 def post_to_twitter(message):

@@ -204,7 +204,7 @@ def init_state():
         "generated_posts": {},
         "generated_image": None,
         "generated_image_url": None,
-        "gemini_key": "AIzaSyCBvmGOXo3eJdZ5V6S3VfS2UZqUHVzRxxg",
+        "gemini_key": "",
         "fb_page_name": "", "fb_page_id": "", "fb_token": "",
         "tw_handle": "", "tw_api_key": "", "tw_api_secret": "",
         "tw_access_token": "", "tw_access_secret": "",
@@ -561,6 +561,13 @@ def status_badge(status):
 
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
+    st.session_state.gemini_key = st.text_input(
+    "🔑 Gemini API Key",
+    value=st.session_state.gemini_key,
+    type="password",
+    placeholder="AIza...",
+    key="gemini_key_input"
+)
     st.markdown("## ⚙️ Settings")
 
     st.markdown("""

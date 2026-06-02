@@ -179,23 +179,18 @@ def save_queue_to_disk(queue: list):
     except Exception as e:
         st.warning(f"Could not save queue: {e}")
 
-def auto_publish_scheduled():
-    now = datetime.now()
-    changed = False
-    for item in st.session_state.queue:
-        if item.get("status") == "scheduled" and item.get("scheduled_time"):
-            try:
-                sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
-                if now >= sched:
-                    for platform, text in item["posts"].items():
-                        result = publish_post(platform, text, image_url=item.get("image_url"), link_url=item.get("link_url"))
-                        if "error" not in result:
-                            item["status"] = "posted"
-                            changed = True
-            except Exception:
-                pass
-    if changed:
-        save_queue_to_disk(st.session_state.queue)
+import threading
+
+def schedule_loop():
+    while True:
+        time.sleep(60)  # check every 60 seconds
+        auto_publish_scheduled()
+
+# Start background thread once
+if "scheduler_started" not in st.session_state:
+    t = threading.Thread(target=schedule_loop, daemon=True)
+    t.start()
+    st.session_state["scheduler_started"] = True
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
@@ -217,7 +212,22 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
-auto_publish_scheduled()
+
+# Background scheduler
+if "scheduler_started" not in st.session_state:
+    def schedule_loop():
+        while True:
+            time.sleep(60)
+            auto_publish_scheduled()
+    t = threading.Thread(target=schedule_loop, daemon=True)
+    t.start()
+    st.session_state["scheduler_started"] = True
+
+# ← ADD THIS BLOCK
+if st.session_state.get("auto_publish_errors"):
+    for err in st.session_state["auto_publish_errors"]:
+        st.error(f"🔴 Auto-publish failed: {err}")
+    st.session_state["auto_publish_errors"] = []
 
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
@@ -404,17 +414,30 @@ def post_to_facebook(message, image_url=None, link_url=None):
     token   = st.session_state.fb_token
     if not page_id or not token:
         return {"error": "Facebook credentials not configured."}
+    
+    API_VERSION = "v19.0"   # ← ADD THIS — missing version causes silent 400 errors
+    
     if image_url:
         r = requests.post(
-            f"https://graph.facebook.com/{page_id}/photos",
-            data={"url": image_url, "caption": message, "access_token": token, "published": True},
+            f"https://graph.facebook.com/{API_VERSION}/{page_id}/photos",
+            data={"url": image_url, "caption": message, 
+                  "access_token": token, "published": True},
         )
     else:
         payload = {"message": message, "access_token": token}
         if link_url:
             payload["link"] = link_url
-        r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload)
-    return r.json()
+        r = requests.post(
+            f"https://graph.facebook.com/{API_VERSION}/{page_id}/feed", 
+            data=payload
+        )
+    
+    result = r.json()
+    # ← ADD THIS: surface the full FB error message
+    if "error" in result:
+        err = result["error"]
+        return {"error": f"[{err.get('code')}] {err.get('message')} — Type: {err.get('type')}"}
+    return result
 
 
 def post_to_twitter(message):

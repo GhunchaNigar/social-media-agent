@@ -179,18 +179,32 @@ def save_queue_to_disk(queue: list):
     except Exception as e:
         st.warning(f"Could not save queue: {e}")
 
-import threading
-
-def schedule_loop():
-    while True:
-        time.sleep(60)  # check every 60 seconds
-        auto_publish_scheduled()
-
-# Start background thread once
-if "scheduler_started" not in st.session_state:
-    t = threading.Thread(target=schedule_loop, daemon=True)
-    t.start()
-    st.session_state["scheduler_started"] = True
+def auto_publish_scheduled():
+    now = datetime.now()
+    changed = False
+    publish_errors = []
+    for item in st.session_state.queue:
+        if item.get("status") == "scheduled" and item.get("scheduled_time"):
+            try:
+                sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
+                if now >= sched:
+                    for platform, text in item["posts"].items():
+                        result = publish_post(
+                            platform, text,
+                            image_url=item.get("image_url"),
+                            link_url=item.get("link_url")
+                        )
+                        if "error" in result:
+                            publish_errors.append(f"{platform}: {result['error']}")
+                        else:
+                            item["status"] = "posted"
+                            changed = True
+            except Exception as e:
+                publish_errors.append(str(e))
+    if changed:
+        save_queue_to_disk(st.session_state.queue)
+    # Store errors so the UI can show them
+    st.session_state["auto_publish_errors"] = publish_errors
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
@@ -212,16 +226,7 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
-
-# Background scheduler
-if "scheduler_started" not in st.session_state:
-    def schedule_loop():
-        while True:
-            time.sleep(60)
-            auto_publish_scheduled()
-    t = threading.Thread(target=schedule_loop, daemon=True)
-    t.start()
-    st.session_state["scheduler_started"] = True
+auto_publish_scheduled()
 
 # ← ADD THIS BLOCK
 if st.session_state.get("auto_publish_errors"):

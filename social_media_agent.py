@@ -382,10 +382,10 @@ def gen_image_pollinations(prompt: str):
     from PIL import Image
     encoded = quote(prompt)
     seed = int(time.time())
-    # Use flux model for much higher quality, enhance=true for auto prompt improvement
+    # flux-schnell is free; drop enhance=true (paid feature)
     url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
-        f"?model=flux&width=1200&height=628&nologo=true&enhance=true&seed={seed}"
+        f"?model=flux-schnell&width=1200&height=628&nologo=true&seed={seed}"
     )
     r = requests.get(url, timeout=120)
     r.raise_for_status()

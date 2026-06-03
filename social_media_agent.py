@@ -378,21 +378,32 @@ def image_prompt(service, brief):
 
 
 def gen_image_pollinations(prompt: str):
-    """Returns (PIL.Image, url_str)"""
+    """Returns (PIL.Image, url_str) using the new gen.pollinations.ai endpoint"""
     from PIL import Image
     encoded = quote(prompt)
     seed = int(time.time())
-    # flux-schnell is free; drop enhance=true (paid feature)
+
+    # New unified endpoint (as of 2026) — flux is free here
     url = (
-    f"https://image.pollinations.ai/prompt/{encoded}"
-    f"?model=flux-schnell&width=1200&height=628&nologo=true&seed={seed}"
-)
-    r = requests.get(url, timeout=120)
-    r.raise_for_status()
-    img = Image.open(BytesIO(r.content))
-    return img, url
+        f"https://gen.pollinations.ai/image/{encoded}"
+        f"?model=flux&width=1200&height=628&nologo=true&seed={seed}"
+    )
 
-
+    try:
+        r = requests.get(url, timeout=120)
+        r.raise_for_status()
+        img = Image.open(BytesIO(r.content))
+        return img, url
+    except Exception:
+        # Fallback: old endpoint with turbo (lightest free model)
+        fallback_url = (
+            f"https://image.pollinations.ai/prompt/{encoded}"
+            f"?model=turbo&width=1200&height=628&nologo=true&seed={seed}"
+        )
+        r = requests.get(fallback_url, timeout=120)
+        r.raise_for_status()
+        img = Image.open(BytesIO(r.content))
+        return img, fallback_url
 def generate_image(service: str, brief: str):
     prompt = image_prompt(service, brief)
     return gen_image_pollinations(prompt)

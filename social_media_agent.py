@@ -485,10 +485,41 @@ def post_to_linkedin(message):
     return {"error": r.text}
 
 
-def post_to_instagram(message):
+def post_to_instagram(message, image_url=None):
     if not st.session_state.ig_user_id or not st.session_state.ig_token:
         return {"error": "Instagram credentials not configured."}
-    return {"error": "Instagram feed posts require an image via the Meta Graph API."}
+    
+    user_id = st.session_state.ig_user_id
+    token = st.session_state.ig_token
+    
+    if not image_url:
+        # Use a default professional image if no image provided
+        image_url = "https://images.unsplash.com/photo-1432888622747-4eb9a8f2c293?w=1080"
+    
+    # Step 1 — Create media container
+    container = requests.post(
+        f"https://graph.facebook.com/v25.0/{user_id}/media",
+        data={
+            "image_url": image_url,
+            "caption": message,
+            "access_token": token
+        }
+    )
+    container_data = container.json()
+    if "error" in container_data:
+        return {"error": container_data["error"]["message"]}
+    
+    creation_id = container_data.get("id")
+    
+    # Step 2 — Publish the container
+    publish = requests.post(
+        f"https://graph.facebook.com/v25.0/{user_id}/media_publish",
+        data={
+            "creation_id": creation_id,
+            "access_token": token
+        }
+    )
+    return publish.json()
 
 
 def publish_post(platform, message, image_url=None, link_url=None):

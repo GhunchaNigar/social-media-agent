@@ -453,14 +453,15 @@ def post_to_linkedin(message):
     if not token:
         return {"error": "LinkedIn access token not configured."}
     headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0",
+    "Authorization": f"Bearer {token}",
+    "Content-Type": "application/json",
+    "X-Restli-Protocol-Version": "2.0.0",
+    "LinkedIn-Version": "202401",
     }
-    me = requests.get("https://api.linkedin.com/v2/me", headers=headers)
+    me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers)
     if me.status_code != 200:
         return {"error": f"Could not fetch LinkedIn profile: {me.text}"}
-    urn = f"urn:li:person:{me.json()['id']}"
+    urn = f"urn:li:person:{me.json().get('sub', me.json().get('id'))}"
     body = {
         "author": urn,
         "lifecycleState": "PUBLISHED",

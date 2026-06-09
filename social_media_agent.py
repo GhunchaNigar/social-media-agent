@@ -21,6 +21,8 @@ import re
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
+from apscheduler.schedulers.background import BackgroundScheduler
+import threading
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -218,6 +220,48 @@ def init_state():
 
 init_state()
 auto_publish_scheduled()
+
+# ─── BACKGROUND SCHEDULER ────────────────────────────────────────────────────
+def background_publish_job():
+    """Runs every minute — publishes due scheduled posts without needing browser open"""
+    try:
+        queue = load_queue_from_disk()
+        now = datetime.now()
+        changed = False
+        for item in queue:
+            if item.get("status") == "scheduled" and item.get("scheduled_time"):
+                try:
+                    sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
+                    if now >= sched:
+                        # Load credentials from a saved config file
+                        config = load_config_from_disk()
+                        for platform, text in item["posts"].items():
+                            result = publish_post_direct(
+                                platform, text,
+                                image_url=item.get("image_url"),
+                                link_url=item.get("link_url"),
+                                config=config
+                            )
+                            if "error" not in result:
+                                item["status"] = "posted"
+                                changed = True
+                            else:
+                                item["status"] = "failed"
+                except Exception:
+                    pass
+        if changed:
+            save_queue_to_disk(queue)
+    except Exception:
+        pass
+
+if "scheduler_started" not in st.session_state:
+    try:
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(background_publish_job, "interval", minutes=1)
+        scheduler.start()
+        st.session_state.scheduler_started = True
+    except Exception:
+        pass
 
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
@@ -520,6 +564,100 @@ def post_to_instagram(message, image_url=None):
     )
     return publish.json()
 
+CONFIG_FILE = pathlib.Path("config_data.json")
+
+def save_config_to_disk():
+    """Save credentials to disk so background job can use them"""
+    config = {
+        "fb_page_id": st.session_state.get("fb_page_id", ""),
+        "fb_token": st.session_state.get("fb_token", ""),
+        "tw_api_key": st.session_state.get("tw_api_key", ""),
+        "tw_api_secret": st.session_state.get("tw_api_secret", ""),
+        "tw_access_token": st.session_state.get("tw_access_token", ""),
+        "tw_access_secret": st.session_state.get("tw_access_secret", ""),
+        "li_access_token": st.session_state.get("li_access_token", ""),
+        "ig_user_id": st.session_state.get("ig_user_id", ""),
+        "ig_token": st.session_state.get("ig_token", ""),
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f)
+
+def load_config_from_disk():
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def publish_post_direct(platform, message, image_url=None, link_url=None, config={}):
+    """Background-safe publish using config dict instead of session state"""
+    if platform == "Facebook":
+        page_id = config.get("fb_page_id", "")
+        token = config.get("fb_token", "")
+        if not page_id or not token:
+            return {"error": "Facebook credentials not configured."}
+        if image_url:
+            r = requests.post(
+                f"https://graph.facebook.com/{page_id}/photos",
+                data={"url": image_url, "caption": message, "access_token": token, "published": True},
+            )
+        else:
+            payload = {"message": message, "access_token": token}
+            if link_url:
+                payload["link"] = link_url
+            r = requests.post(f"https://graph.facebook.com/{page_id}/feed", data=payload)
+        return r.json()
+
+    elif platform == "LinkedIn":
+        token = config.get("li_access_token", "")
+        if not token:
+            return {"error": "LinkedIn not configured."}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "LinkedIn-Version": "202401",
+            "X-Restli-Protocol-Version": "2.0.0",
+        }
+        me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers)
+        if me.status_code != 200:
+            return {"error": "LinkedIn auth failed."}
+        urn = f"urn:li:person:{me.json().get('sub')}"
+        body = {
+            "author": urn,
+            "commentary": message,
+            "visibility": "PUBLIC",
+            "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []},
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False
+        }
+        r = requests.post("https://api.linkedin.com/rest/posts", headers=headers, json=body)
+        if r.status_code in [200, 201]:
+            return {"id": "posted"}
+        return {"error": r.text}
+
+    elif platform == "Instagram":
+        user_id = config.get("ig_user_id", "")
+        token = config.get("ig_token", "")
+        if not user_id or not token:
+            return {"error": "Instagram not configured."}
+        if not image_url:
+            image_url = "https://picsum.photos/1080/1080"
+        container = requests.post(
+            f"https://graph.facebook.com/v25.0/{user_id}/media",
+            data={"image_url": image_url, "caption": message, "access_token": token}
+        )
+        container_data = container.json()
+        if "error" in container_data:
+            return {"error": container_data["error"]["message"]}
+        publish = requests.post(
+            f"https://graph.facebook.com/v25.0/{user_id}/media_publish",
+            data={"creation_id": container_data.get("id"), "access_token": token}
+        )
+        return publish.json()
+
+    return {"error": "Platform not supported in background mode."}
 
 def publish_post(platform, message, image_url=None, link_url=None):
     if platform == "Facebook":
@@ -650,6 +788,8 @@ with st.sidebar:
         st.session_state.ig_user_id = st.text_input("Business User ID",  value=st.session_state.ig_user_id, key="ig_uid")
         st.session_state.ig_token   = st.text_input("Access Token",      value=st.session_state.ig_token,   type="password", key="ig_tk")
 
+    # Auto-save credentials for background scheduler
+    save_config_to_disk()
     st.markdown("---")
     st.caption("Built with Gemini · Pollinations.AI · FLUX · Social Graph APIs")
 

@@ -493,8 +493,7 @@ def post_to_instagram(message, image_url=None):
     token = st.session_state.ig_token
     
     if not image_url:
-        # Use a default professional image if no image provided
-        image_url = "https://images.unsplash.com/photo-1432888622747-4eb9a8f2c293?w=1080"
+    image_url = "https://picsum.photos/1080/1080"
     
     # Step 1 — Create media container
     container = requests.post(

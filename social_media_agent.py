@@ -453,28 +453,36 @@ def post_to_linkedin(message):
     if not token:
         return {"error": "LinkedIn access token not configured."}
     headers = {
-    "Authorization": f"Bearer {token}",
-    "Content-Type": "application/json",
-    "X-Restli-Protocol-Version": "2.0.0",
-    "LinkedIn-Version": "202401",
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "LinkedIn-Version": "202401",
+        "X-Restli-Protocol-Version": "2.0.0",
     }
     me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers)
     if me.status_code != 200:
         return {"error": f"Could not fetch LinkedIn profile: {me.text}"}
-    urn = f"urn:li:person:{me.json().get('sub', me.json().get('id'))}"
+    person_id = me.json().get("sub")
+    urn = f"urn:li:person:{person_id}"
     body = {
         "author": urn,
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": message},
-                "shareMediaCategory": "NONE",
-            }
+        "commentary": message,
+        "visibility": "PUBLIC",
+        "distribution": {
+            "feedDistribution": "MAIN_FEED",
+            "targetEntities": [],
+            "thirdPartyDistributionChannels": []
         },
-        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+        "lifecycleState": "PUBLISHED",
+        "isReshareDisabledByAuthor": False
     }
-    r = requests.post("https://api.linkedin.com/v2/ugcPosts", headers=headers, json=body)
-    return r.json()
+    r = requests.post(
+        "https://api.linkedin.com/rest/posts",
+        headers=headers,
+        json=body
+    )
+    if r.status_code in [200, 201]:
+        return {"id": r.headers.get("x-restli-id", "posted")}
+    return {"error": r.text}
 
 
 def post_to_instagram(message):

@@ -22,17 +22,6 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-# ── Import our fixed scheduler module ────────────────────────────────────────
-from scheduler_fix import (
-    load_queue_from_disk,
-    save_queue_to_disk,
-    load_config_from_disk,
-    save_config_to_disk,
-    process_due_posts,
-    start_scheduler,
-    QUEUE_FILE,
-    CONFIG_FILE,
-)
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(

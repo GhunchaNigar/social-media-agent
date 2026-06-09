@@ -21,6 +21,8 @@ import re
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
+from apscheduler.schedulers.background import BackgroundScheduler
+import threading
 
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────

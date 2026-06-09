@@ -493,7 +493,7 @@ def post_to_instagram(message, image_url=None):
     token = st.session_state.ig_token
     
     if not image_url:
-    image_url = "https://picsum.photos/1080/1080"
+        image_url = "https://picsum.photos/1080/1080"
     
     # Step 1 — Create media container
     container = requests.post(

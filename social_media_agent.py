@@ -229,7 +229,7 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "LinkedIn-Version": "20241101",
+            "LinkedIn-Version": "202504",
             "X-Restli-Protocol-Version": "2.0.0",
         }
         me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers, timeout=15)

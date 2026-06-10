@@ -19,22 +19,10 @@ import time
 import base64
 import re
 import pathlib
+import os
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
-import threading as _threading
-import requests as _requests
-
-def _keep_alive():
-    while True:
-        try:
-            _requests.get("https://social-media-agent-xb41.onrender.com", timeout=10)
-        except Exception:
-            pass
-        time.sleep(240)  # ping every 4 minutes
-
-_t = _threading.Thread(target=_keep_alive, daemon=True)
-_t.start()
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -112,8 +100,10 @@ POST_TYPES = [
 ]
 
 # ─── FILE PATHS ───────────────────────────────────────────────────────────────
-QUEUE_FILE  = pathlib.Path("queue_data.json")
-CONFIG_FILE = pathlib.Path("config_data.json")
+# On Render, use /tmp which persists during the session
+_BASE = pathlib.Path("/tmp") if os.environ.get("RENDER") else pathlib.Path(".")
+QUEUE_FILE  = _BASE / "queue_data.json"
+CONFIG_FILE = _BASE / "config_data.json"
 
 # ─── DISK I/O ─────────────────────────────────────────────────────────────────
 def load_queue_from_disk():
@@ -157,13 +147,34 @@ def save_config_to_disk():
         pass
 
 def load_config_from_disk():
+    """Load config from disk AND override with Render environment variables."""
+    config = {}
     try:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
+                config = json.load(f)
     except Exception:
         pass
-    return {}
+
+    # ✅ Render environment variables always win over saved file
+    env_map = {
+        "GEMINI_KEY":       "gemini_key",
+        "FB_PAGE_ID":       "fb_page_id",
+        "FB_TOKEN":         "fb_token",
+        "TW_API_KEY":       "tw_api_key",
+        "TW_API_SECRET":    "tw_api_secret",
+        "TW_ACCESS_TOKEN":  "tw_access_token",
+        "TW_ACCESS_SECRET": "tw_access_secret",
+        "LI_ACCESS_TOKEN":  "li_access_token",
+        "IG_USER_ID":       "ig_user_id",
+        "IG_TOKEN":         "ig_token",
+    }
+    for env_key, config_key in env_map.items():
+        val = os.environ.get(env_key, "")
+        if val:
+            config[config_key] = val
+
+    return config
 
 # ─── PUBLISH FUNCTIONS (credential-dict based, safe for background use) ───────
 def publish_post_direct(platform, message, image_url=None, link_url=None, config=None):
@@ -332,17 +343,28 @@ def start_scheduler_once():
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
+    # Load env vars / saved config first
+    saved = load_config_from_disk()
+
     defaults = {
-        "queue": load_queue_from_disk(),
-        "generated_posts": {},
-        "generated_image": None,
-        "generated_image_url": None,
-        "gemini_key": "",
-        "fb_page_name": "", "fb_page_id": "", "fb_token": "",
-        "tw_handle": "", "tw_api_key": "", "tw_api_secret": "",
-        "tw_access_token": "", "tw_access_secret": "",
-        "li_name": "", "li_access_token": "",
-        "ig_handle": "", "ig_user_id": "", "ig_token": "",
+        "queue":              load_queue_from_disk(),
+        "generated_posts":    {},
+        "generated_image":    None,
+        "generated_image_url":None,
+        "gemini_key":         saved.get("gemini_key", ""),
+        "fb_page_name":       "",
+        "fb_page_id":         saved.get("fb_page_id", ""),
+        "fb_token":           saved.get("fb_token", ""),
+        "tw_handle":          "",
+        "tw_api_key":         saved.get("tw_api_key", ""),
+        "tw_api_secret":      saved.get("tw_api_secret", ""),
+        "tw_access_token":    saved.get("tw_access_token", ""),
+        "tw_access_secret":   saved.get("tw_access_secret", ""),
+        "li_name":            "",
+        "li_access_token":    saved.get("li_access_token", ""),
+        "ig_handle":          "",
+        "ig_user_id":         saved.get("ig_user_id", ""),
+        "ig_token":           saved.get("ig_token", ""),
     }
     for k, v in defaults.items():
         if k not in st.session_state:

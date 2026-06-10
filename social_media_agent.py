@@ -100,7 +100,6 @@ POST_TYPES = [
 ]
 
 # ─── FILE PATHS ───────────────────────────────────────────────────────────────
-# On Render, use /tmp which persists during the session
 _BASE = pathlib.Path("/tmp") if os.environ.get("RENDER") else pathlib.Path(".")
 QUEUE_FILE  = _BASE / "queue_data.json"
 CONFIG_FILE = _BASE / "config_data.json"
@@ -127,7 +126,6 @@ def save_queue_to_disk(queue: list):
         st.warning(f"Could not save queue: {e}")
 
 def save_config_to_disk():
-    """Save ALL credentials including Gemini key so background scheduler can use them."""
     config = {
         "gemini_key":      st.session_state.get("gemini_key", ""),
         "fb_page_id":      st.session_state.get("fb_page_id", ""),
@@ -147,7 +145,6 @@ def save_config_to_disk():
         pass
 
 def load_config_from_disk():
-    """Load config from disk AND override with Render environment variables."""
     config = {}
     try:
         if CONFIG_FILE.exists():
@@ -155,8 +152,6 @@ def load_config_from_disk():
                 config = json.load(f)
     except Exception:
         pass
-
-    # ✅ Render environment variables always win over saved file
     env_map = {
         "GEMINI_KEY":       "gemini_key",
         "FB_PAGE_ID":       "fb_page_id",
@@ -177,10 +172,9 @@ def load_config_from_disk():
         val = os.environ.get(env_key, "")
         if val:
             config[config_key] = val
-
     return config
 
-# ─── PUBLISH FUNCTIONS (credential-dict based, safe for background use) ───────
+# ─── PUBLISH FUNCTIONS ────────────────────────────────────────────────────────
 def publish_post_direct(platform, message, image_url=None, link_url=None, config=None):
     """Publish using a config dict — works in background thread (no session_state)."""
     if config is None:
@@ -225,40 +219,44 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
     elif platform == "LinkedIn":
         token = config.get("li_access_token", "")
         if not token:
-        return {"error": "LinkedIn access token not configured."}
-        
-        # Try versions in order until one works
+            return {"error": "LinkedIn access token not configured."}
+
+        # ✅ Try versions newest-to-oldest — auto-heals when LinkedIn retires versions
         versions_to_try = ["202506", "202505", "202504", "202503", "202502", "202501"]
         last_error = "Unknown LinkedIn API error"
-        
+
         for version in versions_to_try:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "LinkedIn-Version": version,
-            "X-Restli-Protocol-Version": "2.0.0",
-        }
-        me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers, timeout=15)
-        if me.status_code != 200:
-            return {"error": f"LinkedIn auth failed: {me.text}"}
-        urn = f"urn:li:person:{me.json().get('sub')}"
-        body = {
-            "author": urn, "commentary": message, "visibility": "PUBLIC",
-            "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []},
-            "lifecycleState": "PUBLISHED", "isReshareDisabledByAuthor": False,
-        }
-        r = requests.post("https://api.linkedin.com/rest/posts", headers=headers, json=body, timeout=30)
-        if r.status_code in [200, 201]:
-            return {"id": r.headers.get("x-restli-id", "posted")}
-        
-        resp_text = r.text
-        # If version issue, try next one
-        if "NONEXISTENT_VERSION" in resp_text or "INVALID_VERSION" in resp_text:
-            last_error = resp_text
-            continue
-        # Any other error — return immediately
-        return {"error": resp_text}
-        
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "LinkedIn-Version": version,
+                "X-Restli-Protocol-Version": "2.0.0",
+            }
+            me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers, timeout=15)
+            if me.status_code != 200:
+                return {"error": f"LinkedIn auth failed: {me.text}"}
+            urn = f"urn:li:person:{me.json().get('sub')}"
+            body = {
+                "author": urn,
+                "commentary": message,
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": [],
+                },
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False,
+            }
+            r = requests.post("https://api.linkedin.com/rest/posts", headers=headers, json=body, timeout=30)
+            if r.status_code in [200, 201]:
+                return {"id": r.headers.get("x-restli-id", "posted")}
+            resp_text = r.text
+            if "NONEXISTENT_VERSION" in resp_text or "INVALID_VERSION" in resp_text:
+                last_error = resp_text
+                continue
+            return {"error": resp_text}
+
         return {"error": f"All LinkedIn API versions failed. Last error: {last_error}"}
 
     elif platform == "Instagram":
@@ -302,14 +300,13 @@ def publish_post(platform, message, image_url=None, link_url=None):
     return publish_post_direct(platform, message, image_url=image_url, link_url=link_url, config=config)
 
 
-# ─── BACKGROUND SCHEDULER (Render-compatible) ────────────────────────────────
+# ─── BACKGROUND SCHEDULER ─────────────────────────────────────────────────────
 import threading as _threading
 
 _scheduler_started = False
 _scheduler_lock    = _threading.Lock()
 
 def _scheduler_loop():
-    """Infinite loop — checks queue every 30 seconds."""
     while True:
         try:
             config  = load_config_from_disk()
@@ -361,12 +358,8 @@ def start_scheduler_once():
 
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
-# ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
-    # Always reload credentials from env vars / config on every run
     saved = load_config_from_disk()
-
-    # These are always overwritten from env vars if available
     credential_keys = {
         "gemini_key":      saved.get("gemini_key", ""),
         "fb_page_id":      saved.get("fb_page_id", ""),
@@ -383,12 +376,9 @@ def init_state():
         "fb_page_name":    saved.get("fb_page_name", os.environ.get("FB_PAGE_NAME", "")),
         "tw_handle":       saved.get("tw_handle", os.environ.get("TW_HANDLE", "")),
     }
-    # Always update credentials from env (survives Streamlit reruns)
     for k, v in credential_keys.items():
-        if v:  # only overwrite if env/config has a value
+        if v:
             st.session_state[k] = v
-
-    # These are only set once (not overwritten on rerun)
     once_defaults = {
         "queue":               load_queue_from_disk(),
         "generated_posts":     {},
@@ -398,8 +388,6 @@ def init_state():
     for k, v in once_defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
-
-    # Ensure all keys exist even if empty
     for k in ["gemini_key", "fb_page_name", "fb_page_id", "fb_token",
               "tw_handle", "tw_api_key", "tw_api_secret", "tw_access_token", "tw_access_secret",
               "li_name", "li_access_token", "ig_handle", "ig_user_id", "ig_token"]:
@@ -414,7 +402,6 @@ def call_gemini(prompt: str, gemini_key: str = None) -> str:
     key = gemini_key or st.session_state.get("gemini_key", "")
     if not key:
         raise ValueError("Gemini API key not set.")
-
     models = ["gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17", "gemini-2.0-flash"]
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -480,7 +467,6 @@ def generate_bulk_posts(platforms, service, tone, post_type, hashtags, cta):
             "Facebook":    "conversational, engagement-driven",
         }.get(p, "")
         specs.append(f'{p}: {note}, max {PLATFORMS[p]["max_chars"]} chars')
-
     prompt = f"""You are a digital marketing copywriter for SEO/local marketing services.
 
 Generate one social media post for EACH of these platforms about: {service}
@@ -496,7 +482,6 @@ Platform requirements:
 You MUST respond with ONLY a valid JSON object, no markdown fences, no explanation.
 Example: {{"Facebook": "post text here", "LinkedIn": "post text here"}}
 Include only these platforms: {", ".join(platforms)}"""
-
     raw = call_gemini(prompt)
     clean = re.sub(r"^```[a-zA-Z]*\s*", "", raw.strip())
     clean = re.sub(r"\s*```$", "", clean).strip()
@@ -545,8 +530,6 @@ def generate_image(service: str, brief: str):
     prompt  = image_prompt(service, brief)
     encoded = quote(prompt)
     seed    = int(time.time())
-
-    # Try new endpoint first, fallback to old
     for url in [
         f"https://gen.pollinations.ai/image/{encoded}?model=flux&width=1200&height=628&nologo=true&seed={seed}",
         f"https://image.pollinations.ai/prompt/{encoded}?model=turbo&width=1200&height=628&nologo=true&seed={seed}",
@@ -613,7 +596,6 @@ def save_to_queue(posts_dict, service, post_type, scheduled_time, link_url, imag
             image_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
         except Exception:
             image_b64 = None
-
     item = {
         "id":             int(time.time() * 1000),
         "posts":          posts_dict,
@@ -628,7 +610,6 @@ def save_to_queue(posts_dict, service, post_type, scheduled_time, link_url, imag
     }
     st.session_state.queue.append(item)
     save_queue_to_disk(st.session_state.queue)
-    # ✅ FIX: Save credentials every time a scheduled post is added
     save_config_to_disk()
     return item
 
@@ -647,7 +628,6 @@ with st.sidebar:
         placeholder="AIza...",
         key="gemini_key_input",
     )
-
     st.markdown("## ⚙️ Settings")
     st.markdown("""
     <div class="info-box">
@@ -677,10 +657,8 @@ with st.sidebar:
         st.session_state.ig_user_id = st.text_input("Business User ID",  value=st.session_state.ig_user_id, key="ig_uid")
         st.session_state.ig_token   = st.text_input("Access Token",      value=st.session_state.ig_token,   type="password",             key="ig_tk")
 
-    # ✅ FIX: Always save config on every sidebar interaction
     save_config_to_disk()
 
-    # Show scheduler status
     scheduled_count = sum(1 for i in st.session_state.queue if i.get("status") == "scheduled")
     if scheduled_count > 0:
         st.markdown("---")
@@ -754,8 +732,6 @@ with tab_compose:
             with sc2:
                 sched_time = st.time_input("Time", value=datetime.strptime("09:00", "%H:%M").time())
             scheduled_dt = datetime.combine(sched_date, sched_time).strftime("%Y-%m-%d %H:%M")
-
-            # ✅ Show clear confirmation of scheduled time
             st.markdown(f"""
             <div class="info-box">
                 📅 Will auto-publish at: <b>{scheduled_dt}</b><br>
@@ -837,7 +813,6 @@ with tab_compose:
                     "Add to Queue":       "📥 Add to Queue",
                     "Schedule for Later": f"📅 Schedule for {scheduled_dt or '...'}",
                 }.get(sched_type, "")
-
                 if sched_type != "Save as Draft" and sched_label:
                     if st.button(sched_label, type="primary", use_container_width=True):
                         save_to_queue(
@@ -859,7 +834,6 @@ with tab_compose:
 with tab_queue:
     st.markdown("### 📋 Post Queue")
 
-    # ✅ Reload queue from disk to pick up background scheduler updates
     fresh_queue = load_queue_from_disk()
     if fresh_queue != st.session_state.queue:
         st.session_state.queue = fresh_queue

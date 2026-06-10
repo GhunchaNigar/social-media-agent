@@ -223,15 +223,15 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
             return {"error": str(e)}
 
     elif platform == "LinkedIn":
-    token = config.get("li_access_token", "")
-    if not token:
+        token = config.get("li_access_token", "")
+        if not token:
         return {"error": "LinkedIn access token not configured."}
-    
-    # Try versions in order until one works
-    versions_to_try = ["202506", "202505", "202504", "202503", "202502", "202501"]
-    last_error = "Unknown LinkedIn API error"
-    
-    for version in versions_to_try:
+        
+        # Try versions in order until one works
+        versions_to_try = ["202506", "202505", "202504", "202503", "202502", "202501"]
+        last_error = "Unknown LinkedIn API error"
+        
+        for version in versions_to_try:
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -258,8 +258,8 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
             continue
         # Any other error — return immediately
         return {"error": resp_text}
-    
-    return {"error": f"All LinkedIn API versions failed. Last error: {last_error}"}
+        
+        return {"error": f"All LinkedIn API versions failed. Last error: {last_error}"}
 
     elif platform == "Instagram":
         user_id = config.get("ig_user_id", "")

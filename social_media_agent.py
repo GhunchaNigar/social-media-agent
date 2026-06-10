@@ -160,12 +160,16 @@ def load_config_from_disk():
     env_map = {
         "GEMINI_KEY":       "gemini_key",
         "FB_PAGE_ID":       "fb_page_id",
+        "FB_PAGE_NAME":     "fb_page_name",
         "FB_TOKEN":         "fb_token",
+        "TW_HANDLE":        "tw_handle",
         "TW_API_KEY":       "tw_api_key",
         "TW_API_SECRET":    "tw_api_secret",
         "TW_ACCESS_TOKEN":  "tw_access_token",
         "TW_ACCESS_SECRET": "tw_access_secret",
+        "LI_NAME":          "li_name",
         "LI_ACCESS_TOKEN":  "li_access_token",
+        "IG_HANDLE":        "ig_handle",
         "IG_USER_ID":       "ig_user_id",
         "IG_TOKEN":         "ig_token",
     }
@@ -342,33 +346,50 @@ def start_scheduler_once():
 
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
+# ─── SESSION STATE ────────────────────────────────────────────────────────────
 def init_state():
-    # Load env vars / saved config first
+    # Always reload credentials from env vars / config on every run
     saved = load_config_from_disk()
 
-    defaults = {
-        "queue":              load_queue_from_disk(),
-        "generated_posts":    {},
-        "generated_image":    None,
-        "generated_image_url":None,
-        "gemini_key":         saved.get("gemini_key", ""),
-        "fb_page_name":       "",
-        "fb_page_id":         saved.get("fb_page_id", ""),
-        "fb_token":           saved.get("fb_token", ""),
-        "tw_handle":          "",
-        "tw_api_key":         saved.get("tw_api_key", ""),
-        "tw_api_secret":      saved.get("tw_api_secret", ""),
-        "tw_access_token":    saved.get("tw_access_token", ""),
-        "tw_access_secret":   saved.get("tw_access_secret", ""),
-        "li_name":            "",
-        "li_access_token":    saved.get("li_access_token", ""),
-        "ig_handle":          "",
-        "ig_user_id":         saved.get("ig_user_id", ""),
-        "ig_token":           saved.get("ig_token", ""),
+    # These are always overwritten from env vars if available
+    credential_keys = {
+        "gemini_key":      saved.get("gemini_key", ""),
+        "fb_page_id":      saved.get("fb_page_id", ""),
+        "fb_token":        saved.get("fb_token", ""),
+        "tw_api_key":      saved.get("tw_api_key", ""),
+        "tw_api_secret":   saved.get("tw_api_secret", ""),
+        "tw_access_token": saved.get("tw_access_token", ""),
+        "tw_access_secret":saved.get("tw_access_secret", ""),
+        "li_access_token": saved.get("li_access_token", ""),
+        "li_name":         saved.get("li_name", os.environ.get("LI_NAME", "")),
+        "ig_user_id":      saved.get("ig_user_id", ""),
+        "ig_token":        saved.get("ig_token", ""),
+        "ig_handle":       saved.get("ig_handle", os.environ.get("IG_HANDLE", "")),
+        "fb_page_name":    saved.get("fb_page_name", os.environ.get("FB_PAGE_NAME", "")),
+        "tw_handle":       saved.get("tw_handle", os.environ.get("TW_HANDLE", "")),
     }
-    for k, v in defaults.items():
+    # Always update credentials from env (survives Streamlit reruns)
+    for k, v in credential_keys.items():
+        if v:  # only overwrite if env/config has a value
+            st.session_state[k] = v
+
+    # These are only set once (not overwritten on rerun)
+    once_defaults = {
+        "queue":               load_queue_from_disk(),
+        "generated_posts":     {},
+        "generated_image":     None,
+        "generated_image_url": None,
+    }
+    for k, v in once_defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+    # Ensure all keys exist even if empty
+    for k in ["gemini_key", "fb_page_name", "fb_page_id", "fb_token",
+              "tw_handle", "tw_api_key", "tw_api_secret", "tw_access_token", "tw_access_secret",
+              "li_name", "li_access_token", "ig_handle", "ig_user_id", "ig_token"]:
+        if k not in st.session_state:
+            st.session_state[k] = ""
 
 init_state()
 start_scheduler_once()

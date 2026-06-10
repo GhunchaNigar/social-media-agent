@@ -223,13 +223,19 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
             return {"error": str(e)}
 
     elif platform == "LinkedIn":
-        token = config.get("li_access_token", "")
-        if not token:
-            return {"error": "LinkedIn access token not configured."}
+    token = config.get("li_access_token", "")
+    if not token:
+        return {"error": "LinkedIn access token not configured."}
+    
+    # Try versions in order until one works
+    versions_to_try = ["202506", "202505", "202504", "202503", "202502", "202501"]
+    last_error = "Unknown LinkedIn API error"
+    
+    for version in versions_to_try:
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "LinkedIn-Version": "202504",
+            "LinkedIn-Version": version,
             "X-Restli-Protocol-Version": "2.0.0",
         }
         me = requests.get("https://api.linkedin.com/v2/userinfo", headers=headers, timeout=15)
@@ -244,7 +250,16 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
         r = requests.post("https://api.linkedin.com/rest/posts", headers=headers, json=body, timeout=30)
         if r.status_code in [200, 201]:
             return {"id": r.headers.get("x-restli-id", "posted")}
-        return {"error": r.text}
+        
+        resp_text = r.text
+        # If version issue, try next one
+        if "NONEXISTENT_VERSION" in resp_text or "INVALID_VERSION" in resp_text:
+            last_error = resp_text
+            continue
+        # Any other error — return immediately
+        return {"error": resp_text}
+    
+    return {"error": f"All LinkedIn API versions failed. Last error: {last_error}"}
 
     elif platform == "Instagram":
         user_id = config.get("ig_user_id", "")

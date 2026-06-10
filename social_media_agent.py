@@ -22,6 +22,19 @@ import pathlib
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
+import threading as _threading
+import requests as _requests
+
+def _keep_alive():
+    while True:
+        try:
+            _requests.get("https://social-media-agent-xb41.onrender.com", timeout=10)
+        except Exception:
+            pass
+        time.sleep(240)  # ping every 4 minutes
+
+_t = _threading.Thread(target=_keep_alive, daemon=True)
+_t.start()
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(

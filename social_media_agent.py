@@ -19,7 +19,6 @@ import time
 import base64
 import re
 import pathlib
-import threading
 from io import BytesIO
 from datetime import datetime, timedelta
 from urllib.parse import quote
@@ -260,64 +259,62 @@ def publish_post(platform, message, image_url=None, link_url=None):
     return publish_post_direct(platform, message, image_url=image_url, link_url=link_url, config=config)
 
 
-# ─── BACKGROUND SCHEDULER ────────────────────────────────────────────────────
-# Uses a threading.Timer loop — more reliable than APScheduler with Streamlit
+# ─── BACKGROUND SCHEDULER (Render-compatible) ────────────────────────────────
+import threading as _threading
 
-_scheduler_lock = threading.Lock()
+_scheduler_started = False
+_scheduler_lock    = _threading.Lock()
 
-def _run_scheduler():
-    """Runs every 60 seconds in a background thread. Reads/writes disk directly."""
-    try:
-        config = load_config_from_disk()
-        queue  = load_queue_from_disk()
-        now    = datetime.now()
-        changed = False
-
-        for item in queue:
-            if item.get("status") == "scheduled" and item.get("scheduled_time"):
+def _scheduler_loop():
+    """Infinite loop — checks queue every 30 seconds."""
+    while True:
+        try:
+            config  = load_config_from_disk()
+            queue   = load_queue_from_disk()
+            now     = datetime.now()
+            changed = False
+            for item in queue:
+                if item.get("status") != "scheduled":
+                    continue
+                sched_str = item.get("scheduled_time")
+                if not sched_str:
+                    continue
                 try:
-                    sched = datetime.strptime(item["scheduled_time"], "%Y-%m-%d %H:%M")
-                    if now >= sched:
-                        success = True
-                        for platform, text in item.get("posts", {}).items():
-                            result = publish_post_direct(
-                                platform, text,
-                                image_url=item.get("image_url"),
-                                link_url=item.get("link_url"),
-                                config=config,
-                            )
-                            if "error" in result:
-                                success = False
-                                # Log failure reason into item
-                                item.setdefault("errors", {})[platform] = result["error"]
-                        item["status"] = "posted" if success else "failed"
-                        item["published_at"] = now.strftime("%Y-%m-%d %H:%M")
-                        changed = True
-                except Exception as e:
-                    item["status"] = "failed"
-                    item["errors"] = {"scheduler": str(e)}
-                    changed = True
-
-        if changed:
-            save_queue_to_disk(queue)
-
-    except Exception:
-        pass
-
-    # Schedule next run in 60 seconds
-    t = threading.Timer(60, _run_scheduler)
-    t.daemon = True
-    t.start()
+                    sched = datetime.strptime(sched_str, "%Y-%m-%d %H:%M")
+                except Exception:
+                    continue
+                if now < sched:
+                    continue
+                all_ok, errors = True, {}
+                for platform, text in item.get("posts", {}).items():
+                    result = publish_post_direct(
+                        platform, text,
+                        image_url=item.get("image_url"),
+                        link_url=item.get("link_url"),
+                        config=config,
+                    )
+                    if "error" in result:
+                        all_ok = False
+                        errors[platform] = result["error"]
+                item["status"]       = "posted" if all_ok else "failed"
+                item["published_at"] = now.strftime("%Y-%m-%d %H:%M")
+                if errors:
+                    item["errors"] = errors
+                changed = True
+            if changed:
+                save_queue_to_disk(queue)
+        except Exception:
+            pass
+        time.sleep(30)
 
 
 def start_scheduler_once():
-    """Start the scheduler thread only once per process."""
+    global _scheduler_started
     with _scheduler_lock:
-        if not st.session_state.get("_scheduler_started"):
-            t = threading.Timer(60, _run_scheduler)
-            t.daemon = True
+        if not _scheduler_started:
+            t = _threading.Thread(target=_scheduler_loop, daemon=True)
             t.start()
-            st.session_state["_scheduler_started"] = True
+            _scheduler_started = True
 
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
@@ -615,7 +612,14 @@ with st.sidebar:
     # Show scheduler status
     scheduled_count = sum(1 for i in st.session_state.queue if i.get("status") == "scheduled")
     if scheduled_count > 0:
-        st.markdown(f"---\n🕐 **{scheduled_count} post(s) scheduled** — auto-publishing active")
+        st.markdown("---")
+        st.markdown(f"🕐 **{scheduled_count} post(s) scheduled**")
+        st.markdown("""
+        <div class="info-box">
+            ✅ Scheduler running inside app<br>
+            Checks every 30 seconds automatically.
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
     st.caption("Built with Gemini · Pollinations.AI · Social Graph APIs")

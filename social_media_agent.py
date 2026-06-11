@@ -40,8 +40,10 @@ def _keep_alive():
         time.sleep(240)  # ping every 4 minutes
 
 def start_keep_alive():
-    t = _threading.Thread(target=_keep_alive, daemon=True)
-    t.start()
+    if "keepalive_started" not in st.session_state:
+        t = _threading.Thread(target=_keep_alive, daemon=True)
+        t.start()
+        st.session_state.keepalive_started = True
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -322,8 +324,10 @@ def publish_post(platform, message, image_url=None, link_url=None):
 # ─── BACKGROUND SCHEDULER ─────────────────────────────────────────────────────
 import threading as _threading
 
-_scheduler_started = False
-_scheduler_lock    = _threading.Lock()
+_scheduler_lock = _threading.Lock()
+
+if "scheduler_thread_id" not in st.session_state:
+    st.session_state.scheduler_thread_id = None
 
 def _scheduler_loop():
     while True:
@@ -368,12 +372,11 @@ def _scheduler_loop():
 
 
 def start_scheduler_once():
-    global _scheduler_started
     with _scheduler_lock:
-        if not _scheduler_started:
+        if "scheduler_started" not in st.session_state:
             t = _threading.Thread(target=_scheduler_loop, daemon=True)
             t.start()
-            _scheduler_started = True
+            st.session_state.scheduler_started = True
 
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────

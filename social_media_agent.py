@@ -420,6 +420,21 @@ init_state()
 start_scheduler_once()
 start_keep_alive()
 
+# ─── DEBUG STATUS ─────────────────────────────────────────────
+import threading as _th
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🔧 Debug**")
+st.sidebar.write(f"Threads running: {_th.active_count()}")
+st.sidebar.write(f"Scheduler flag exists: {pathlib.Path('/tmp/scheduler_running.flag').exists()}")
+st.sidebar.write(f"Queue file exists: {QUEUE_FILE.exists()}")
+st.sidebar.write(f"Config file exists: {CONFIG_FILE.exists()}")
+if CONFIG_FILE.exists():
+    cfg = load_config_from_disk()
+    st.sidebar.write(f"FB token loaded: {'✅' if cfg.get('fb_token') else '❌'}")
+    st.sidebar.write(f"FB page ID loaded: {'✅' if cfg.get('fb_page_id') else '❌'}")
+st.sidebar.write(f"Scheduler in session: {'✅' if 'scheduler_started' in st.session_state else '❌'}")
+st.sidebar.write(f"Current server time: {datetime.now().strftime('%H:%M:%S')}")
+
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
 def call_gemini(prompt: str, gemini_key: str = None) -> str:
     key = gemini_key or st.session_state.get("gemini_key", "")

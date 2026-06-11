@@ -530,18 +530,30 @@ def generate_image(service: str, brief: str):
     prompt  = image_prompt(service, brief)
     encoded = quote(prompt)
     seed    = int(time.time())
-    for url in [
-        f"https://gen.pollinations.ai/image/{encoded}?model=flux&width=1200&height=628&nologo=true&seed={seed}",
+
+    endpoints = [
+        # Pollinations variants
+        f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1200&height=628&nologo=true&seed={seed}",
         f"https://image.pollinations.ai/prompt/{encoded}?model=turbo&width=1200&height=628&nologo=true&seed={seed}",
-    ]:
+        f"https://image.pollinations.ai/prompt/{encoded}?width=1200&height=628&nologo=true&seed={seed}",
+        # Picsum — random high quality stock photo (always works)
+        f"https://picsum.photos/seed/{seed}/1200/628",
+        # Unsplash — keyword-based real photography
+        f"https://source.unsplash.com/1200x628/?{quote(service.lower().replace(' ', ','))}",
+    ]
+
+    for url in endpoints:
         try:
-            r = requests.get(url, timeout=120)
+            r = requests.get(url, timeout=60, allow_redirects=True)
             r.raise_for_status()
+            if len(r.content) < 5000:  # skip tiny/broken responses
+                continue
             img = Image.open(BytesIO(r.content))
             return img, url
         except Exception:
             continue
-    raise RuntimeError("All Pollinations image endpoints failed.")
+
+    raise RuntimeError("All image endpoints failed.")
 
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────

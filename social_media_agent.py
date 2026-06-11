@@ -1,17 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════╗
-║       AI Social Media Agent  —  Digital Marketing            ║
-║  Platforms : Facebook · X (Twitter) · Instagram · LinkedIn   ║
-║  Services  : SEO · Citations · AI SEO · GBP · Marketing      ║
-║  Text AI   : Google Gemini 2.5 Flash  (free)                 ║
-║  Image AI  : Pollinations.AI (free · no key needed)          ║
-╚══════════════════════════════════════════════════════════════╝
-
-Run:
-    pip install streamlit requests pillow google-generativeai tweepy apscheduler
-    streamlit run social_media_agent.py
-"""
-
 import streamlit as st
 import requests
 import json
@@ -242,7 +228,7 @@ def publish_post_direct(platform, message, image_url=None, link_url=None, config
         if not token:
             return {"error": "LinkedIn access token not configured."}
 
-        # ✅ Try versions newest-to-oldest — auto-heals when LinkedIn retires versions
+        #  Try versions newest-to-oldest — auto-heals when LinkedIn retires versions
         versions_to_try = ["202506", "202505", "202504", "202503", "202502", "202501"]
         last_error = "Unknown LinkedIn API error"
 
@@ -420,20 +406,6 @@ init_state()
 start_scheduler_once()
 start_keep_alive()
 
-# ─── DEBUG STATUS ─────────────────────────────────────────────
-import threading as _th
-st.sidebar.markdown("---")
-st.sidebar.markdown("**🔧 Debug**")
-st.sidebar.write(f"Threads running: {_th.active_count()}")
-st.sidebar.write(f"Scheduler flag exists: {pathlib.Path('/tmp/scheduler_running.flag').exists()}")
-st.sidebar.write(f"Queue file exists: {QUEUE_FILE.exists()}")
-st.sidebar.write(f"Config file exists: {CONFIG_FILE.exists()}")
-if CONFIG_FILE.exists():
-    cfg = load_config_from_disk()
-    st.sidebar.write(f"FB token loaded: {'✅' if cfg.get('fb_token') else '❌'}")
-    st.sidebar.write(f"FB page ID loaded: {'✅' if cfg.get('fb_page_id') else '❌'}")
-st.sidebar.write(f"Scheduler in session: {'✅' if 'scheduler_started' in st.session_state else '❌'}")
-st.sidebar.write(f"Current server time: {datetime.now().strftime('%H:%M:%S')}")
 
 # ─── GEMINI TEXT ──────────────────────────────────────────────────────────────
 def call_gemini(prompt: str, gemini_key: str = None) -> str:
@@ -459,7 +431,7 @@ def call_gemini(prompt: str, gemini_key: str = None) -> str:
             candidate = data["candidates"][0]
             text = candidate["content"]["parts"][0]["text"].strip()
             if candidate.get("finishReason") == "MAX_TOKENS":
-                text += "\n\n[⚠️ Post truncated — please edit to complete it]"
+                text += "\n\n[ Post truncated — please edit to complete it]"
             return text
         except (requests.RequestException, KeyError):
             continue
@@ -672,7 +644,7 @@ def status_badge(status):
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.session_state.gemini_key = st.text_input(
-        "🔑 Gemini API Key",
+        "Gemini API Key",
         value=st.session_state.gemini_key,
         type="password",
         placeholder="AIza...",
@@ -681,28 +653,28 @@ with st.sidebar:
     st.markdown("## ⚙️ Settings")
     st.markdown("""
     <div class="info-box">
-        🤖 <b>Text</b>: Gemini 2.5 Flash (free)<br>
-        🖼️ <b>Images</b>: Pollinations.AI (free · no key needed)
+         <b>Text</b>: Gemini 2.5 Flash (free)<br>
+         <b>Images</b>: Pollinations.AI (free · no key needed)
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("📘 Facebook"):
+    with st.expander("Facebook"):
         st.session_state.fb_page_name = st.text_input("Page Name (preview)", value=st.session_state.fb_page_name, placeholder="My Business Page", key="fb_nm")
         st.session_state.fb_page_id   = st.text_input("Page ID",             value=st.session_state.fb_page_id,   placeholder="123456789",       key="fb_id")
         st.session_state.fb_token     = st.text_input("Page Access Token",   value=st.session_state.fb_token,     type="password",               key="fb_tk")
 
-    with st.expander("𝕏 X (Twitter)"):
+    with st.expander("𝕏 (Twitter)"):
         st.session_state.tw_handle        = st.text_input("@Handle (preview)",   value=st.session_state.tw_handle,        placeholder="@YourBusiness", key="tw_h")
         st.session_state.tw_api_key       = st.text_input("API Key",             value=st.session_state.tw_api_key,       type="password",             key="tw_ak")
         st.session_state.tw_api_secret    = st.text_input("API Secret",          value=st.session_state.tw_api_secret,    type="password",             key="tw_as")
         st.session_state.tw_access_token  = st.text_input("Access Token",        value=st.session_state.tw_access_token,  type="password",             key="tw_at")
         st.session_state.tw_access_secret = st.text_input("Access Token Secret", value=st.session_state.tw_access_secret, type="password",             key="tw_ats")
 
-    with st.expander("💼 LinkedIn"):
+    with st.expander("LinkedIn"):
         st.session_state.li_name         = st.text_input("Page Name (preview)", value=st.session_state.li_name,         placeholder="Your Company", key="li_nm")
         st.session_state.li_access_token = st.text_input("Access Token",        value=st.session_state.li_access_token, type="password",            key="li_tk")
 
-    with st.expander("📸 Instagram"):
+    with st.expander("Instagram"):
         st.session_state.ig_handle  = st.text_input("@Handle (preview)", value=st.session_state.ig_handle,  placeholder="@yourbusiness", key="ig_h")
         st.session_state.ig_user_id = st.text_input("Business User ID",  value=st.session_state.ig_user_id, key="ig_uid")
         st.session_state.ig_token   = st.text_input("Access Token",      value=st.session_state.ig_token,   type="password",             key="ig_tk")
@@ -715,7 +687,7 @@ with st.sidebar:
         st.markdown(f"🕐 **{scheduled_count} post(s) scheduled**")
         st.markdown("""
         <div class="info-box">
-            ✅ Scheduler running inside app<br>
+            Scheduler running inside app<br>
             Checks every 30 seconds automatically.
         </div>
         """, unsafe_allow_html=True)
@@ -727,16 +699,16 @@ with st.sidebar:
 # ─── HEADER ───────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-    <h1>🚀 AI Social Media Agent</h1>
+    <h1>AI Social Media Agent</h1>
     <p>Powered by Gemini AI &nbsp;·&nbsp; SEO · Local Citations · AI SEO · GBP Optimization · Digital Marketing</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ─── TABS ─────────────────────────────────────────────────────────────────────
 tab_compose, tab_queue, tab_bulk = st.tabs([
-    "✍️ Compose & Schedule",
-    f"📋 Queue & Publish  ({len(st.session_state.queue)})",
-    "⚡ Bulk Generator",
+    "Compose & Schedule",
+    f"Queue & Publish  ({len(st.session_state.queue)})",
+    "Bulk Generator",
 ])
 
 
@@ -764,10 +736,10 @@ with tab_compose:
         st.markdown("**Options**")
         opt1, opt2, opt3 = st.columns(3)
         with opt1: include_hashtags = st.checkbox("# Hashtags", value=True)
-        with opt2: include_cta      = st.checkbox("📣 CTA",     value=True)
-        with opt3: add_image        = st.checkbox("🖼️ AI Image", value=False)
+        with opt2: include_cta      = st.checkbox("CTA",     value=True)
+        with opt3: add_image        = st.checkbox("AI Image", value=False)
 
-        include_link = st.checkbox("🔗 Include Link", value=False)
+        include_link = st.checkbox("Include Link", value=False)
         link_url = ""
         if include_link:
             link_url = st.text_input("Link URL", placeholder="https://yoursite.com/page")
@@ -784,8 +756,8 @@ with tab_compose:
             scheduled_dt = datetime.combine(sched_date, sched_time).strftime("%Y-%m-%d %H:%M")
             st.markdown(f"""
             <div class="info-box">
-                📅 Will auto-publish at: <b>{scheduled_dt}</b><br>
-                ⚠️ Keep this app running for scheduled posts to publish automatically.
+                Will auto-publish at: <b>{scheduled_dt}</b><br>
+                Keep this app running for scheduled posts to publish automatically.
             </div>
             """, unsafe_allow_html=True)
 
@@ -793,9 +765,9 @@ with tab_compose:
         st.markdown("### 2️⃣ Generate & Preview")
 
         if not st.session_state.gemini_key:
-            st.markdown('<div class="warn-box">⚠️ Add your Gemini API key in the sidebar. Free at aistudio.google.com</div>', unsafe_allow_html=True)
+            st.markdown('<div class="warn-box">Add your Gemini API key in the sidebar. Free at aistudio.google.com</div>', unsafe_allow_html=True)
 
-        gen_btn = st.button("✨ Generate Posts", type="primary", use_container_width=True, disabled=not selected_platforms)
+        gen_btn = st.button("Generate Posts", type="primary", use_container_width=True, disabled=not selected_platforms)
 
         if gen_btn:
             if not selected_platforms:
@@ -822,7 +794,7 @@ with tab_compose:
                             st.session_state.generated_image = img
                             st.session_state.generated_image_url = img_url
                         except Exception as e:
-                            st.warning(f"🖼️ Image failed: {e}")
+                            st.warning(f"Image failed: {e}")
 
         if st.session_state.generated_posts:
             edited_posts = {}
@@ -842,26 +814,26 @@ with tab_compose:
 
             if st.session_state.generated_image:
                 st.markdown("---")
-                st.markdown("**🖼️ AI Generated Image**")
+                st.markdown("**AI Generated Image**")
                 st.image(st.session_state.generated_image, use_container_width=True)
                 buf = BytesIO()
                 st.session_state.generated_image.save(buf, format="PNG")
-                st.download_button("⬇️ Download Image", data=buf.getvalue(),
+                st.download_button("Download Image", data=buf.getvalue(),
                     file_name=f"{service.lower().replace(' ','_')}_social_image.png", mime="image/png")
 
             st.markdown("---")
             col_save, col_sched = st.columns(2)
             with col_save:
-                if st.button("💾 Save as Draft", use_container_width=True):
+                if st.button("Save as Draft", use_container_width=True):
                     save_to_queue(edited_posts, service, post_type, None, link_url,
                         image=st.session_state.generated_image,
                         image_url=st.session_state.generated_image_url)
-                    st.success("✅ Saved to drafts!")
+                    st.success("Saved to drafts!")
 
             with col_sched:
                 sched_label = {
-                    "Add to Queue":       "📥 Add to Queue",
-                    "Schedule for Later": f"📅 Schedule for {scheduled_dt or '...'}",
+                    "Add to Queue":       "Add to Queue",
+                    "Schedule for Later": f"Schedule for {scheduled_dt or '...'}",
                 }.get(sched_type, "")
                 if sched_type != "Save as Draft" and sched_label:
                     if st.button(sched_label, type="primary", use_container_width=True):
@@ -872,9 +844,9 @@ with tab_compose:
                             image=st.session_state.generated_image,
                             image_url=st.session_state.generated_image_url,
                         )
-                        st.success("✅ Added to queue!")
+                        st.success("Added to queue!")
                         if sched_type == "Schedule for Later":
-                            st.info(f"⏰ Will publish automatically at {scheduled_dt}")
+                            st.info(f"Will publish automatically at {scheduled_dt}")
                         st.balloons()
 
 
@@ -882,7 +854,7 @@ with tab_compose:
 # TAB 2 — QUEUE & PUBLISH
 # ══════════════════════════════════════════════════════════════
 with tab_queue:
-    st.markdown("### 📋 Post Queue")
+    st.markdown("### Post Queue")
 
     fresh_queue = load_queue_from_disk()
     if fresh_queue != st.session_state.queue:
@@ -897,7 +869,7 @@ with tab_queue:
             filter_status = st.selectbox("Filter", ["All", "Draft", "Scheduled", "Posted", "Failed"], key="q_filter")
         with f2:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🗑️ Clear All", use_container_width=True):
+            if st.button("Clear All", use_container_width=True):
                 st.session_state.queue = []
                 save_queue_to_disk([])
                 st.rerun()
@@ -912,9 +884,9 @@ with tab_queue:
 
         for idx, item in enumerate(shown):
             badge = status_badge(item["status"])
-            sched_html = f'<br><small style="color:#1877f2">📅 Scheduled: {item["scheduled_time"]}</small>' if item.get("scheduled_time") else ""
-            pub_html   = f'<br><small style="color:#1a7f37">✅ Published: {item.get("published_at","")}</small>' if item.get("published_at") else ""
-            err_html   = f'<br><small style="color:#dc2626">❌ Errors: {item.get("errors","")}</small>' if item.get("errors") else ""
+            sched_html = f'<br><small style="color:#1877f2">Scheduled: {item["scheduled_time"]}</small>' if item.get("scheduled_time") else ""
+            pub_html   = f'<br><small style="color:#1a7f37">Published: {item.get("published_at","")}</small>' if item.get("published_at") else ""
+            err_html   = f'<br><small style="color:#dc2626">Errors: {item.get("errors","")}</small>' if item.get("errors") else ""
 
             st.markdown(f"""
             <div class="queue-card">
@@ -929,7 +901,7 @@ with tab_queue:
                     from PIL import Image as PILImage
                     img_bytes = base64.b64decode(item["image_b64"])
                     img_obj = PILImage.open(BytesIO(img_bytes))
-                    st.image(img_obj, caption="🖼️ Queued Image", use_container_width=True)
+                    st.image(img_obj, caption="Queued Image", use_container_width=True)
                 except Exception:
                     pass
 
@@ -942,25 +914,25 @@ with tab_queue:
                     )
                     pcol1, pcol2, pcol3 = st.columns(3)
                     with pcol1:
-                        if st.button(f"🚀 Publish to {platform}", key=f"pub_{item['id']}_{platform}"):
+                        if st.button(f"Publish to {platform}", key=f"pub_{item['id']}_{platform}"):
                             with st.spinner(f"Publishing to {platform}…"):
                                 result = publish_post(platform, current_text,
                                     image_url=item.get("image_url"), link_url=item.get("link_url"))
                             if "error" in result:
-                                st.error(f"❌ {result['error']}")
+                                st.error(f"{result['error']}")
                             else:
-                                st.success(f"✅ Published! ID: {result.get('id','')}")
+                                st.success(f"Published! ID: {result.get('id','')}")
                                 item["status"] = "posted"
                                 item["published_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                                 save_queue_to_disk(st.session_state.queue)
                     with pcol2:
                         if item["status"] != "posted":
-                            if st.button("✅ Mark Posted", key=f"mark_{item['id']}_{platform}"):
+                            if st.button("Mark Posted", key=f"mark_{item['id']}_{platform}"):
                                 item["status"] = "posted"
                                 save_queue_to_disk(st.session_state.queue)
                                 st.rerun()
                     with pcol3:
-                        if st.button("🗑️ Delete", key=f"del_{item['id']}_{platform}"):
+                        if st.button("Delete", key=f"del_{item['id']}_{platform}"):
                             st.session_state.queue = [i for i in st.session_state.queue if i["id"] != item["id"]]
                             save_queue_to_disk(st.session_state.queue)
                             st.rerun()
@@ -970,7 +942,7 @@ with tab_queue:
 # TAB 3 — BULK GENERATOR
 # ══════════════════════════════════════════════════════════════
 with tab_bulk:
-    st.markdown("### ⚡ Bulk Content Generator")
+    st.markdown("### Bulk Content Generator")
     st.caption("Generate a week's worth of content across all your services at once.")
 
     b1, b2 = st.columns(2)
@@ -979,14 +951,14 @@ with tab_bulk:
         bulk_tone     = st.selectbox("Tone", TONES, key="bulk_tone")
         bulk_hashtags = st.checkbox("Include Hashtags", value=True, key="b_ht")
         bulk_cta      = st.checkbox("Include CTA",      value=True, key="b_cta")
-        bulk_image    = st.checkbox("🖼️ Generate Image per post", value=False, key="b_img")
+        bulk_image    = st.checkbox("Generate Image per post", value=False, key="b_img")
     with b2:
         bulk_platforms    = st.multiselect("Platforms", list(PLATFORMS.keys()), default=["Facebook", "LinkedIn"])
         posts_per_service = st.number_input("Posts per service", min_value=1, max_value=5, value=1)
 
     total_posts = len(bulk_services) * posts_per_service
 
-    if st.button(f"⚡ Generate {total_posts} Post Sets", type="primary", use_container_width=True):
+    if st.button(f"Generate {total_posts} Post Sets", type="primary", use_container_width=True):
         if not bulk_services:
             st.error("Select at least one service.")
         elif not bulk_platforms:
@@ -999,7 +971,7 @@ with tab_bulk:
             for svc in bulk_services:
                 for i in range(posts_per_service):
                     pt = POST_TYPES[i % len(POST_TYPES)]
-                    progress_bar.progress(done / total_posts, text=f"✍️ Writing {svc} — {pt}…")
+                    progress_bar.progress(done / total_posts, text=f"Writing {svc} — {pt}…")
                     try:
                         posts_dict = generate_bulk_posts(bulk_platforms, svc, bulk_tone, pt, bulk_hashtags, bulk_cta)
                         img = None
@@ -1013,13 +985,13 @@ with tab_bulk:
                         errors.append(f"{svc}: {e}")
                     done += 1
                     time.sleep(0.4)
-            progress_bar.progress(1.0, text="✅ Done!")
+            progress_bar.progress(1.0, text="Done!")
             st.success(f"Generated {done} post set(s) → saved to Queue tab.")
             for err in errors:
-                st.warning(f"⚠️ {err}")
+                st.warning(f"{err}")
 
     st.markdown("---")
-    st.markdown("#### 📅 Weekly Content Calendar Planner")
+    st.markdown("#### Weekly Content Calendar Planner")
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     cal_cols = st.columns(7)
     calendar_plan = {}
@@ -1033,7 +1005,7 @@ with tab_bulk:
         st.markdown("**This week's plan:** " + " · ".join(planned))
 
     st.markdown("---")
-    st.markdown("#### 📊 Queue Stats")
+    st.markdown("#### Queue Stats")
     q = st.session_state.queue
     s1, s2, s3, s4, s5 = st.columns(5)
     s1.metric("Total",     len(q))

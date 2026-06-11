@@ -121,7 +121,7 @@ POST_TYPES = [
 ]
 
 # ─── FILE PATHS ───────────────────────────────────────────────────────────────
-_BASE = pathlib.Path("/tmp") if os.environ.get("RENDER") else pathlib.Path(".")
+_BASE = pathlib.Path(".")  # Remove the /tmp logic entirely
 QUEUE_FILE  = _BASE / "queue_data.json"
 CONFIG_FILE = _BASE / "config_data.json"
 

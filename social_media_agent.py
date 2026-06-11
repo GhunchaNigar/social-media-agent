@@ -326,8 +326,6 @@ import threading as _threading
 
 _scheduler_lock = _threading.Lock()
 
-if "scheduler_thread_id" not in st.session_state:
-    st.session_state.scheduler_thread_id = None
 
 def _scheduler_loop():
     while True:
@@ -371,12 +369,14 @@ def _scheduler_loop():
         time.sleep(30)
 
 
+_SCHEDULER_FLAG = pathlib.Path("/tmp/scheduler_running.flag")
+
 def start_scheduler_once():
     with _scheduler_lock:
-        if "scheduler_started" not in st.session_state:
+        if not _SCHEDULER_FLAG.exists():
+            _SCHEDULER_FLAG.touch()
             t = _threading.Thread(target=_scheduler_loop, daemon=True)
             t.start()
-            st.session_state.scheduler_started = True
 
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
